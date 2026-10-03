@@ -64,6 +64,7 @@ public class MusicTagEditor extends JFrame {
 	private static Font FONT_KOREAN;
 	private static Font FONT_CHINESE;
 	private static Font FONT_JAPANESE;
+	private static Font FONT_THAI;
 
 	// ============================================================
 	// UI
@@ -141,6 +142,8 @@ public class MusicTagEditor extends JFrame {
 		FONT_CHINESE = findFont(14, "Noto Sans SC");
 
 		FONT_JAPANESE = findFont(14, "Noto Sans JP");
+
+		FONT_THAI = findFont(14, "Noto Sans Thai");
 	}
 
 	private static Font findFont(int size, String... names) {
@@ -193,7 +196,10 @@ public class MusicTagEditor extends JFrame {
 		if (isKhmer(codePoint)) {
 			return FONT_KHMER;
 		}
-
+		// Thai
+		if (isThai(codePoint)) {
+			return FONT_THAI;
+		}
 		// Korean Hangul
 		if (isKorean(codePoint)) {
 			return FONT_KOREAN;
@@ -211,6 +217,10 @@ public class MusicTagEditor extends JFrame {
 
 		// Everything else
 		return FONT_LATIN;
+	}
+
+	private static boolean isThai(int cp) {
+		return cp >= 0x0E00 && cp <= 0x0E7F;
 	}
 
 	private static boolean isKhmer(int cp) {
