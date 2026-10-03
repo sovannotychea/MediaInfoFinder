@@ -1,476 +1,652 @@
 package edu.media.info.finder;
 
-import com.google.gson.*;
-import okhttp3.*;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 import org.jaudiotagger.audio.AudioFile;
 import org.jaudiotagger.audio.AudioFileIO;
 import org.jaudiotagger.tag.FieldKey;
 import org.jaudiotagger.tag.Tag;
+import org.jaudiotagger.tag.TagException;
+import org.jaudiotagger.tag.FieldDataInvalidException;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.SimpleAttributeSet;
+import javax.swing.text.StyleConstants;
+import javax.swing.text.StyledDocument;
+
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class MusicTagEditor extends JFrame {
 
     // ============================================================
-    // FONT
+    // Fonts
     // ============================================================
 
-    private static Font appFont;
+    private static Font FONT_LATIN;
+    private static Font FONT_KHMER;
+    private static Font FONT_KOREAN;
+    private static Font FONT_CHINESE;
+    private static Font FONT_JAPANESE;
 
-    private static void setupKhmerFont() {
+    // ============================================================
+    // UI
+    // ============================================================
+
+    private JTextField folderField;
+
+    private JTable fileTable;
+    private DefaultTableModel fileTableModel;
+
+    private JPanel resultsPanel;
+    private JScrollPane resultsScroll;
+
+    private JTextPane selectedFileInfo;
+
+    private JButton scanButton;
+    private JButton refreshButton;
+    private JButton searchButton;
+
+    // ============================================================
+    // Data
+    // ============================================================
+
+    private final List<File> mediaFiles = new ArrayList<>();
+
+    private File selectedFile;
+
+    private final OkHttpClient httpClient = new OkHttpClient();
+    private final Gson gson = new Gson();
+
+    // ============================================================
+    // Constructor
+    // ============================================================
+
+    public MusicTagEditor() {
+
+        setTitle("Music Tag Editor");
+        setSize(1200, 800);
+        setLocationRelativeTo(null);
+
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        buildUI();
+    }
+
+    // ============================================================
+    // Main
+    // ============================================================
+
+    public static void main(String[] args) {
+
+        setupFonts();
+
+        SwingUtilities.invokeLater(() -> {
+
+            setGlobalSwingFont();
+
+            MusicTagEditor editor = new MusicTagEditor();
+            editor.setVisible(true);
+        });
+    }
+
+    // ============================================================
+    // Font setup
+    // ============================================================
+
+    private static void setupFonts() {
+
+        FONT_LATIN = findFont(
+                14,
+                "Segoe UI",
+                "Arial",
+                "Dialog"
+        );
+
+        FONT_KHMER = findFont(
+                14,
+                "Noto Sans Khmer",
+                "Khmer OS",
+                "Khmer OS System",
+                "Leelawadee UI",
+                "Segoe UI"
+        );
+
+        FONT_KOREAN = findFont(
+                14,
+                "Malgun Gothic",
+                "Noto Sans KR",
+                "Noto Sans CJK KR",
+                "Batang",
+                "Gulim",
+                "Segoe UI"
+        );
+
+        FONT_CHINESE = findFont(
+                14,
+                "Microsoft YaHei",
+                "Noto Sans SC",
+                "Noto Sans CJK SC",
+                "SimSun",
+                "SimHei",
+                "Segoe UI"
+        );
+
+        FONT_JAPANESE = findFont(
+                14,
+                "Yu Gothic UI",
+                "Yu Gothic",
+                "Meiryo",
+                "Noto Sans JP",
+                "Noto Sans CJK JP",
+                "MS Gothic",
+                "Segoe UI"
+        );
+    }
+
+    private static Font findFont(int size, String... names) {
 
         GraphicsEnvironment ge =
-                GraphicsEnvironment
-                        .getLocalGraphicsEnvironment();
+                GraphicsEnvironment.getLocalGraphicsEnvironment();
 
-        String[] preferredFonts = {
-                "Noto Sans Khmer",
-                "Leelawadee UI",
-                "Khmer OS System",
-                "Khmer OS"
-        };
-
-        String[] installedFonts =
+        String[] installed =
                 ge.getAvailableFontFamilyNames();
 
-        String selectedFont = null;
+        for (String wanted : names) {
 
-        for (String preferred : preferredFonts) {
+            for (String installedName : installed) {
 
-            for (String installed : installedFonts) {
+                if (installedName.equalsIgnoreCase(wanted)) {
 
-                if (installed.equalsIgnoreCase(
-                        preferred)) {
-
-                    selectedFont = installed;
-                    break;
+                    return new Font(
+                            installedName,
+                            Font.PLAIN,
+                            size
+                    );
                 }
             }
-
-            if (selectedFont != null) {
-                break;
-            }
         }
 
-        if (selectedFont == null) {
+        return new Font(
+                "Dialog",
+                Font.PLAIN,
+                size
+        );
+    }
 
-            /*
-             * Java logical font.
-             * Windows normally provides
-             * Khmer fallback automatically.
-             */
-            selectedFont = "Dialog";
+    private static void setGlobalSwingFont() {
+
+        Font font = FONT_LATIN;
+
+        UIManager.put("Label.font", font);
+        UIManager.put("Button.font", font);
+        UIManager.put("TextField.font", font);
+        UIManager.put("TextArea.font", font);
+        UIManager.put("TextPane.font", font);
+        UIManager.put("Table.font", font);
+        UIManager.put("TableHeader.font", font);
+        UIManager.put("List.font", font);
+        UIManager.put("ComboBox.font", font);
+        UIManager.put("CheckBox.font", font);
+        UIManager.put("RadioButton.font", font);
+        UIManager.put("TabbedPane.font", font);
+        UIManager.put("OptionPane.messageFont", font);
+        UIManager.put("OptionPane.buttonFont", font);
+    }
+
+    // ============================================================
+    // Detect font for Unicode character
+    // ============================================================
+
+    private static Font getFontForCodePoint(int codePoint) {
+
+        // Khmer
+        if (isKhmer(codePoint)) {
+            return FONT_KHMER;
         }
 
-        appFont =
-                new Font(
-                        selectedFont,
-                        Font.PLAIN,
-                        14
+        // Korean Hangul
+        if (isKorean(codePoint)) {
+            return FONT_KOREAN;
+        }
+
+        // Chinese
+        if (isChinese(codePoint)) {
+            return FONT_CHINESE;
+        }
+
+        // Japanese
+        if (isJapanese(codePoint)) {
+            return FONT_JAPANESE;
+        }
+
+        // Everything else
+        return FONT_LATIN;
+    }
+
+    private static boolean isKhmer(int cp) {
+
+        return
+                (cp >= 0x1780 && cp <= 0x17FF) ||
+                (cp >= 0x19E0 && cp <= 0x19FF);
+    }
+
+    private static boolean isKorean(int cp) {
+
+        return
+                (cp >= 0x1100 && cp <= 0x11FF) ||
+                (cp >= 0x3130 && cp <= 0x318F) ||
+                (cp >= 0xAC00 && cp <= 0xD7AF) ||
+                (cp >= 0xA960 && cp <= 0xA97F) ||
+                (cp >= 0xD7B0 && cp <= 0xD7FF);
+    }
+
+    private static boolean isChinese(int cp) {
+
+        return
+                (cp >= 0x3400 && cp <= 0x4DBF) ||
+                (cp >= 0x4E00 && cp <= 0x9FFF) ||
+                (cp >= 0xF900 && cp <= 0xFAFF) ||
+                (cp >= 0x20000 && cp <= 0x2FA1F);
+    }
+
+    private static boolean isJapanese(int cp) {
+
+        return
+                (cp >= 0x3040 && cp <= 0x309F) || // Hiragana
+                (cp >= 0x30A0 && cp <= 0x30FF) || // Katakana
+                (cp >= 0x31F0 && cp <= 0x31FF) || // Katakana extensions
+                (cp >= 0xFF66 && cp <= 0xFF9F);   // Half-width Katakana
+    }
+
+    // ============================================================
+    // Create mixed-language JTextPane
+    // ============================================================
+
+    private static JTextPane createMultiLanguageTextPane(
+            String text
+    ) {
+
+        JTextPane pane = new JTextPane();
+
+        pane.setEditable(false);
+        pane.setOpaque(false);
+        pane.setBorder(null);
+
+        pane.setFont(FONT_LATIN);
+
+        setMultiLanguageText(pane, text);
+
+        return pane;
+    }
+
+    // ============================================================
+    // Set mixed-language text
+    // ============================================================
+
+    private static void setMultiLanguageText(
+            JTextPane pane,
+            String text
+    ) {
+
+        if (text == null) {
+            text = "";
+        }
+
+        StyledDocument document =
+                pane.getStyledDocument();
+
+        try {
+
+            document.remove(
+                    0,
+                    document.getLength()
+            );
+
+            int index = 0;
+
+            while (index < text.length()) {
+
+                int codePoint =
+                        text.codePointAt(index);
+
+                int charCount =
+                        Character.charCount(codePoint);
+
+                String character =
+                        new String(
+                                Character.toChars(codePoint)
+                        );
+
+                Font font =
+                        getFontForCodePoint(codePoint);
+
+                SimpleAttributeSet attributes =
+                        new SimpleAttributeSet();
+
+                StyleConstants.setFontFamily(
+                        attributes,
+                        font.getFamily()
                 );
 
-        UIManager.put(
-                "Label.font",
-                appFont
-        );
+                StyleConstants.setFontSize(
+                        attributes,
+                        font.getSize()
+                );
 
-        UIManager.put(
-                "Button.font",
-                appFont
-        );
+                StyleConstants.setForeground(
+                        attributes,
+                        UIManager.getColor(
+                                "Label.foreground"
+                        )
+                );
 
-        UIManager.put(
-                "TextField.font",
-                appFont
-        );
+                document.insertString(
+                        document.getLength(),
+                        character,
+                        attributes
+                );
 
-        UIManager.put(
-                "Table.font",
-                appFont
-        );
+                index += charCount;
+            }
 
-        UIManager.put(
-                "TableHeader.font",
-                appFont
-        );
+        } catch (BadLocationException e) {
 
-        UIManager.put(
-                "OptionPane.messageFont",
-                appFont
-        );
-
-        UIManager.put(
-                "OptionPane.buttonFont",
-                appFont
-        );
-
-        UIManager.put(
-                "ScrollPane.font",
-                appFont
-        );
+            e.printStackTrace();
+        }
     }
 
     // ============================================================
     // UI
     // ============================================================
 
-    private final JTextField pathField =
-            new JTextField();
-
-    private final DefaultTableModel fileTableModel =
-            new DefaultTableModel(
-                    new Object[]{
-                            "File",
-                            "Track",
-                            "Artist"
-                    },
-                    0
-            ) {
-
-                @Override
-                public boolean isCellEditable(
-                        int row,
-                        int column) {
-
-                    return false;
-                }
-            };
-
-    private final JTable fileTable =
-            new JTable(fileTableModel);
-
-    private final JPanel resultPanel =
-            new JPanel();
-
-    private final JLabel statusLabel =
-            new JLabel("Ready");
-
-    // ============================================================
-    // HTTP / JSON
-    // ============================================================
-
-    private final OkHttpClient httpClient =
-            new OkHttpClient();
-
-    private final Gson gson =
-            new Gson();
-
-    // ============================================================
-    // CONSTRUCTOR
-    // ============================================================
-
-    public MusicTagEditor() {
-
-        setTitle(
-                "Music Tag Editor - Khmer"
-        );
-
-        setSize(1200, 750);
-
-        setLocationRelativeTo(null);
-
-        setDefaultCloseOperation(
-                JFrame.EXIT_ON_CLOSE
-        );
-
-        buildUI();
-
-        /*
-         * Apply font directly to components.
-         */
-        applyFontToComponents(
-                getContentPane()
-        );
-    }
-
-    // ============================================================
-    // APPLY FONT RECURSIVELY
-    // ============================================================
-
-    private void applyFontToComponents(
-            Container container) {
-
-        for (Component component :
-                container.getComponents()) {
-
-            component.setFont(appFont);
-
-            if (component instanceof Container) {
-
-                applyFontToComponents(
-                        (Container) component
-                );
-            }
-        }
-    }
-
-    // ============================================================
-    // BUILD UI
-    // ============================================================
-
     private void buildUI() {
 
-        JPanel main =
-                new JPanel(
-                        new BorderLayout(
-                                10,
-                                10
-                        )
-                );
+        JPanel root = new JPanel(new BorderLayout(10, 10));
 
-        main.setBorder(
-                new EmptyBorder(
-                        10,
-                        10,
-                        10,
-                        10
-                )
+        root.setBorder(
+                new EmptyBorder(10, 10, 10, 10)
         );
 
-        // ========================================================
-        // TOP
-        // ========================================================
+        setContentPane(root);
 
-        JPanel top =
-                new JPanel(
-                        new BorderLayout(
-                                5,
-                                5
-                        )
-                );
+        // --------------------------------------------------------
+        // Top
+        // --------------------------------------------------------
 
-        JButton browseButton =
-                new JButton("Browse...");
+        JPanel topPanel =
+                new JPanel(new BorderLayout(5, 5));
 
-        JButton scanButton =
-                new JButton("Scan");
+        JLabel folderLabel =
+                new JLabel("Folder:");
 
-        top.add(
-                pathField,
+        topPanel.add(
+                folderLabel,
+                BorderLayout.WEST
+        );
+
+        folderField =
+                new JTextField();
+
+        topPanel.add(
+                folderField,
                 BorderLayout.CENTER
         );
 
-        JPanel topButtons =
-                new JPanel();
+        JPanel buttonPanel =
+                new JPanel(new FlowLayout(
+                        FlowLayout.RIGHT,
+                        5,
+                        0
+                ));
 
-        topButtons.add(
-                browseButton
-        );
+        JButton browseButton =
+                new JButton("Browse");
 
-        topButtons.add(
-                scanButton
-        );
+        scanButton =
+                new JButton("Scan");
 
-        top.add(
-                topButtons,
+        refreshButton =
+                new JButton("Refresh Tags");
+
+        searchButton =
+                new JButton("Search iTunes");
+
+        buttonPanel.add(browseButton);
+        buttonPanel.add(scanButton);
+        buttonPanel.add(refreshButton);
+        buttonPanel.add(searchButton);
+
+        topPanel.add(
+                buttonPanel,
                 BorderLayout.EAST
         );
 
-        main.add(
-                top,
+        root.add(
+                topPanel,
                 BorderLayout.NORTH
         );
 
-        // ========================================================
-        // FILE TABLE
-        // ========================================================
+        // --------------------------------------------------------
+        // File table
+        // --------------------------------------------------------
 
-        fileTable.setSelectionMode(
-                ListSelectionModel.SINGLE_SELECTION
-        );
+        fileTableModel =
+                new DefaultTableModel(
+                        new Object[]{
+                                "File",
+                                "Track",
+                                "Artist"
+                        },
+                        0
+                ) {
 
-        fileTable.setAutoCreateRowSorter(true);
+                    @Override
+                    public boolean isCellEditable(
+                            int row,
+                            int column
+                    ) {
+                        return false;
+                    }
 
-        fileTable.setRowHeight(27);
+                    @Override
+                    public Class<?> getColumnClass(
+                            int column
+                    ) {
+
+                        if (column == 0) {
+                            return File.class;
+                        }
+
+                        return String.class;
+                    }
+                };
+
+        fileTable =
+                new JTable(fileTableModel);
+
+        fileTable.setRowHeight(32);
+        fileTable.setFillsViewportHeight(true);
 
         fileTable.getColumnModel()
                 .getColumn(0)
-                .setPreferredWidth(350);
+                .setPreferredWidth(550);
 
         fileTable.getColumnModel()
                 .getColumn(1)
-                .setPreferredWidth(220);
+                .setPreferredWidth(250);
 
         fileTable.getColumnModel()
                 .getColumn(2)
-                .setPreferredWidth(180);
+                .setPreferredWidth(250);
+
+        fileTable.setDefaultRenderer(
+                File.class,
+                new MultiLanguageTableRenderer()
+        );
+
+        fileTable.setDefaultRenderer(
+                String.class,
+                new MultiLanguageTableRenderer()
+        );
 
         JScrollPane fileScroll =
                 new JScrollPane(fileTable);
 
-        fileScroll.setBorder(
+        // --------------------------------------------------------
+        // Selected file information
+        // --------------------------------------------------------
+
+        selectedFileInfo =
+                new JTextPane();
+
+        selectedFileInfo.setEditable(false);
+        selectedFileInfo.setBackground(
+                UIManager.getColor("Panel.background")
+        );
+
+        selectedFileInfo.setBorder(
                 BorderFactory.createTitledBorder(
-                        "Media Files"
+                        "Selected File"
                 )
         );
 
-        // ========================================================
-        // ITUNES RESULTS
-        // ========================================================
+        selectedFileInfo.setPreferredSize(
+                new Dimension(300, 100)
+        );
 
-        resultPanel.setLayout(
+        // --------------------------------------------------------
+        // Results
+        // --------------------------------------------------------
+
+        resultsPanel =
+                new JPanel();
+
+        resultsPanel.setLayout(
                 new BoxLayout(
-                        resultPanel,
+                        resultsPanel,
                         BoxLayout.Y_AXIS
                 )
         );
 
-        resultPanel.setBorder(
-                new EmptyBorder(
-                        5,
-                        5,
-                        5,
-                        5
-                )
-        );
+        resultsScroll =
+                new JScrollPane(resultsPanel);
 
-        JScrollPane resultScroll =
-                new JScrollPane(
-                        resultPanel
-                );
-
-        resultScroll.setBorder(
+        resultsScroll.setBorder(
                 BorderFactory.createTitledBorder(
                         "iTunes Results"
                 )
         );
 
-        // ========================================================
-        // SPLIT
-        // ========================================================
+        // --------------------------------------------------------
+        // Center
+        // --------------------------------------------------------
 
-        JSplitPane splitPane =
+        JSplitPane horizontalSplit =
                 new JSplitPane(
                         JSplitPane.HORIZONTAL_SPLIT,
                         fileScroll,
-                        resultScroll
+                        resultsScroll
                 );
 
-        splitPane.setDividerLocation(500);
+        horizontalSplit.setResizeWeight(0.50);
 
-        main.add(
-                splitPane,
+        JSplitPane verticalSplit =
+                new JSplitPane(
+                        JSplitPane.VERTICAL_SPLIT,
+                        horizontalSplit,
+                        selectedFileInfo
+                );
+
+        verticalSplit.setResizeWeight(0.85);
+
+        root.add(
+                verticalSplit,
                 BorderLayout.CENTER
         );
 
-        // ========================================================
-        // BOTTOM
-        // ========================================================
-
-        JPanel bottom =
-                new JPanel(
-                        new BorderLayout()
-                );
-
-        JButton searchButton =
-                new JButton(
-                        "Search iTunes"
-                );
-
-        JButton refreshButton =
-                new JButton(
-                        "Refresh Tags"
-                );
-
-        JPanel buttonPanel =
-                new JPanel();
-
-        buttonPanel.add(
-                searchButton
-        );
-
-        buttonPanel.add(
-                refreshButton
-        );
-
-        bottom.add(
-                buttonPanel,
-                BorderLayout.CENTER
-        );
-
-        bottom.add(
-                statusLabel,
-                BorderLayout.SOUTH
-        );
-
-        main.add(
-                bottom,
-                BorderLayout.SOUTH
-        );
-
-        // ========================================================
-        // EVENTS
-        // ========================================================
+        // --------------------------------------------------------
+        // Events
+        // --------------------------------------------------------
 
         browseButton.addActionListener(
-                e -> chooseFolder()
+                e -> browseFolder()
         );
 
         scanButton.addActionListener(
-                e -> scanFiles()
-        );
-
-        searchButton.addActionListener(
-                e -> searchSelectedFile()
+                e -> scanFolder()
         );
 
         refreshButton.addActionListener(
                 e -> refreshTags()
         );
 
+        searchButton.addActionListener(
+                e -> {
+
+                    if (selectedFile != null) {
+                        searchITunesForFile(selectedFile);
+                    }
+                }
+        );
+
         fileTable.getSelectionModel()
-                .addListSelectionListener(
-                        e -> {
+                .addListSelectionListener(e -> {
 
-                            if (e.getValueIsAdjusting()) {
-                                return;
+                    if (!e.getValueIsAdjusting()) {
+
+                        int row =
+                                fileTable.getSelectedRow();
+
+                        if (row >= 0) {
+
+                            Object value =
+                                    fileTableModel.getValueAt(
+                                            row,
+                                            0
+                                    );
+
+                            if (value instanceof File) {
+
+                                selectedFile =
+                                        (File) value;
+
+                                showSelectedFile(
+                                        selectedFile
+                                );
+
+                                searchITunesForFile(
+                                        selectedFile
+                                );
                             }
-
-                            int row =
-                                    fileTable
-                                            .getSelectedRow();
-
-                            if (row < 0) {
-                                return;
-                            }
-
-                            int modelRow =
-                                    fileTable
-                                            .convertRowIndexToModel(
-                                                    row
-                                            );
-
-                            File file =
-                                    (File)
-                                            fileTableModel
-                                                    .getValueAt(
-                                                            modelRow,
-                                                            0
-                                                    );
-
-                            searchITunes(file);
                         }
-                );
-
-        setContentPane(main);
+                    }
+                });
     }
 
     // ============================================================
-    // CHOOSE FOLDER
+    // Browse
     // ============================================================
 
-    private void chooseFolder() {
+    private void browseFolder() {
 
         JFileChooser chooser =
                 new JFileChooser();
@@ -482,33 +658,29 @@ public class MusicTagEditor extends JFrame {
         if (chooser.showOpenDialog(this)
                 == JFileChooser.APPROVE_OPTION) {
 
-            pathField.setText(
-                    chooser
-                            .getSelectedFile()
+            folderField.setText(
+                    chooser.getSelectedFile()
                             .getAbsolutePath()
             );
-
-            scanFiles();
         }
     }
 
     // ============================================================
-    // SCAN
+    // Scan
     // ============================================================
 
-    private void scanFiles() {
-
-        fileTableModel.setRowCount(0);
-
-        resultPanel.removeAll();
-
-        resultPanel.revalidate();
-        resultPanel.repaint();
+    private void scanFolder() {
 
         String path =
-                pathField.getText().trim();
+                folderField.getText().trim();
 
         if (path.isEmpty()) {
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Please select a folder."
+            );
+
             return;
         }
 
@@ -519,103 +691,67 @@ public class MusicTagEditor extends JFrame {
 
             JOptionPane.showMessageDialog(
                     this,
-                    "Invalid folder."
+                    "Folder does not exist."
             );
 
             return;
         }
 
-        statusLabel.setText(
-                "Scanning..."
-        );
+        mediaFiles.clear();
+        fileTableModel.setRowCount(0);
 
-        SwingWorker<List<File>, Void> worker =
-                new SwingWorker<>() {
+        scanDirectory(folder);
 
-                    @Override
-                    protected List<File>
-                    doInBackground()
-                            throws Exception {
+        for (File file : mediaFiles) {
 
-                        List<File> files =
-                                new ArrayList<>();
+            TagInfo tag =
+                    readTags(file);
 
-                        try (var stream =
-                                     Files.walk(
-                                             folder.toPath()
-                                     )) {
-
-                            stream
-                                    .filter(
-                                            Files::isRegularFile
-                                    )
-                                    .filter(
-                                            MusicTagEditor
-                                                    ::isMediaFile
-                                    )
-                                    .forEach(
-                                            p ->
-                                                    files.add(
-                                                            p.toFile()
-                                                    )
-                                    );
-                        }
-
-                        return files;
+            fileTableModel.addRow(
+                    new Object[]{
+                            file,
+                            tag.title,
+                            tag.artist
                     }
+            );
+        }
 
-                    @Override
-                    protected void done() {
+        if (!mediaFiles.isEmpty()) {
 
-                        try {
-
-                            List<File> files =
-                                    get();
-
-                            for (File file :
-                                    files) {
-
-                                Metadata metadata =
-                                        readMetadata(
-                                                file
-                                        );
-
-                                fileTableModel.addRow(
-                                        new Object[]{
-                                                file,
-                                                metadata.track,
-                                                metadata.artist
-                                        }
-                                );
-                            }
-
-                            statusLabel.setText(
-                                    "Found "
-                                            + files.size()
-                                            + " media files"
-                            );
-
-                        } catch (Exception ex) {
-
-                            showError(ex);
-                        }
-                    }
-                };
-
-        worker.execute();
+            fileTable.setRowSelectionInterval(
+                    0,
+                    0
+            );
+        }
     }
 
-    // ============================================================
-    // MEDIA FILE
-    // ============================================================
+    private void scanDirectory(File directory) {
 
-    private static boolean
-    isMediaFile(Path path) {
+        File[] files =
+                directory.listFiles();
+
+        if (files == null) {
+            return;
+        }
+
+        for (File file : files) {
+
+            if (file.isDirectory()) {
+
+                scanDirectory(file);
+
+            } else if (isMediaFile(file)) {
+
+                mediaFiles.add(file);
+            }
+        }
+    }
+
+    private boolean isMediaFile(File file) {
 
         String name =
-                path.getFileName()
-                        .toString()
-                        .toLowerCase();
+                file.getName()
+                        .toLowerCase(Locale.ROOT);
 
         return name.endsWith(".mp3")
                 || name.endsWith(".flac")
@@ -623,14 +759,62 @@ public class MusicTagEditor extends JFrame {
     }
 
     // ============================================================
-    // READ TAGS
+    // Refresh tags
     // ============================================================
 
-    private Metadata readMetadata(
-            File file) {
+    private void refreshTags() {
 
-        Metadata metadata =
-                new Metadata();
+        for (int row = 0;
+             row < fileTableModel.getRowCount();
+             row++) {
+
+            Object value =
+                    fileTableModel.getValueAt(
+                            row,
+                            0
+                    );
+
+            if (!(value instanceof File)) {
+                continue;
+            }
+
+            File file =
+                    (File) value;
+
+            TagInfo tag =
+                    readTags(file);
+
+            fileTableModel.setValueAt(
+                    tag.title,
+                    row,
+                    1
+            );
+
+            fileTableModel.setValueAt(
+                    tag.artist,
+                    row,
+                    2
+            );
+        }
+
+        if (selectedFile != null) {
+
+            showSelectedFile(
+                    selectedFile
+            );
+        }
+
+        fileTable.repaint();
+    }
+
+    // ============================================================
+    // Read tags
+    // ============================================================
+
+    private TagInfo readTags(File file) {
+
+        TagInfo result =
+                new TagInfo();
 
         try {
 
@@ -642,217 +826,206 @@ public class MusicTagEditor extends JFrame {
 
             if (tag != null) {
 
-                metadata.track =
-                        tag.getFirst(
+                result.title =
+                        safe(tag.getFirst(
                                 FieldKey.TITLE
-                        );
+                        ));
 
-                metadata.artist =
-                        tag.getFirst(
+                result.artist =
+                        safe(tag.getFirst(
                                 FieldKey.ARTIST
-                        );
+                        ));
+
+                result.album =
+                        safe(tag.getFirst(
+                                FieldKey.ALBUM
+                        ));
+
+                result.albumArtist =
+                        safe(tag.getFirst(
+                                FieldKey.ALBUM_ARTIST
+                        ));
+
+                result.genre =
+                        safe(tag.getFirst(
+                                FieldKey.GENRE
+                        ));
+
+                result.year =
+                        safe(tag.getFirst(
+                                FieldKey.YEAR
+                        ));
+
+                result.track =
+                        safe(tag.getFirst(
+                                FieldKey.TRACK
+                        ));
+
+                result.disc =
+                        safe(tag.getFirst(
+                                FieldKey.DISC_NO
+                        ));
             }
 
-        } catch (Exception ex) {
+        } catch (Exception e) {
 
             System.err.println(
                     "Cannot read tags: "
-                            + file.getName()
+                            + file.getAbsolutePath()
+            );
+
+            System.err.println(
+                    e.getMessage()
             );
         }
 
-        return metadata;
+        return result;
+    }
+
+    private String safe(String value) {
+
+        if (value == null) {
+            return "";
+        }
+
+        return value;
     }
 
     // ============================================================
-    // REFRESH TAGS
+    // Selected file
     // ============================================================
 
-    private void refreshTags() {
+    private void showSelectedFile(File file) {
 
-        if (fileTableModel.getRowCount()
-                == 0) {
+        TagInfo tag =
+                readTags(file);
 
-            statusLabel.setText(
-                    "No files to refresh"
-            );
+        String text =
+                "File: " + file.getName() + "\n"
+                + "Title: " + tag.title + "\n"
+                + "Artist: " + tag.artist + "\n"
+                + "Album: " + tag.album + "\n"
+                + "Album Artist: " + tag.albumArtist + "\n"
+                + "Genre: " + tag.genre + "\n"
+                + "Year: " + tag.year + "\n"
+                + "Track: " + tag.track + "\n"
+                + "Disc: " + tag.disc;
 
-            return;
-        }
-
-        statusLabel.setText(
-                "Refreshing tags..."
+        setMultiLanguageText(
+                selectedFileInfo,
+                text
         );
-
-        SwingWorker<Void, Void> worker =
-                new SwingWorker<>() {
-
-                    @Override
-                    protected Void
-                    doInBackground() {
-
-                        for (int i = 0;
-                             i < fileTableModel
-                                     .getRowCount();
-                             i++) {
-
-                            File file =
-                                    (File)
-                                            fileTableModel
-                                                    .getValueAt(
-                                                            i,
-                                                            0
-                                                    );
-
-                            Metadata metadata =
-                                    readMetadata(
-                                            file
-                                    );
-
-                            fileTableModel.setValueAt(
-                                    metadata.track,
-                                    i,
-                                    1
-                            );
-
-                            fileTableModel.setValueAt(
-                                    metadata.artist,
-                                    i,
-                                    2
-                            );
-                        }
-
-                        return null;
-                    }
-
-                    @Override
-                    protected void done() {
-
-                        statusLabel.setText(
-                                "Tags refreshed"
-                        );
-
-                        fileTable.revalidate();
-                        fileTable.repaint();
-                    }
-                };
-
-        worker.execute();
     }
 
     // ============================================================
-    // SELECTED FILE
+    // iTunes search
     // ============================================================
 
-    private File getSelectedFile() {
-
-        int row =
-                fileTable.getSelectedRow();
-
-        if (row < 0) {
-            return null;
-        }
-
-        int modelRow =
-                fileTable.convertRowIndexToModel(
-                        row
-                );
-
-        return (File)
-                fileTableModel.getValueAt(
-                        modelRow,
-                        0
-                );
-    }
-
-    // ============================================================
-    // SEARCH
-    // ============================================================
-
-    private void searchSelectedFile() {
-
-        File file =
-                getSelectedFile();
-
-        if (file == null) {
-
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Select a media file first."
-            );
-
-            return;
-        }
-
-        searchITunes(file);
-    }
-
-    private void searchITunes(
-            File file) {
-
-        resultPanel.removeAll();
-
-        resultPanel.revalidate();
-        resultPanel.repaint();
+    private void searchITunesForFile(File file) {
 
         String searchText =
                 getSearchText(file);
 
-        statusLabel.setText(
-                "Searching iTunes: "
-                        + searchText
-        );
+        if (searchText.isEmpty()) {
+            return;
+        }
 
-        SwingWorker<
-                List<TrackInfo>,
-                Void
-                > worker =
-                new SwingWorker<>() {
+        resultsPanel.removeAll();
 
-                    @Override
-                    protected List<TrackInfo>
-                    doInBackground()
-                            throws Exception {
+        JLabel searching =
+                new JLabel(
+                        "Searching iTunes..."
+                );
 
-                        return searchITunesAPI(
-                                searchText
+        resultsPanel.add(searching);
+
+        resultsPanel.revalidate();
+        resultsPanel.repaint();
+
+        Thread thread =
+                new Thread(() -> {
+
+                    try {
+
+                        String encoded =
+                                URLEncoder.encode(
+                                        searchText,
+                                        StandardCharsets.UTF_8
+                                );
+
+                        String url =
+                                "https://itunes.apple.com/search"
+                                + "?term="
+                                + encoded
+                                + "&media=music"
+                                + "&entity=song"
+                                + "&limit=20";
+
+                        Request request =
+                                new Request.Builder()
+                                        .url(url)
+                                        .get()
+                                        .build();
+
+                        try (Response response =
+                                     httpClient.newCall(
+                                             request
+                                     ).execute()) {
+
+                            if (!response.isSuccessful()) {
+
+                                SwingUtilities.invokeLater(
+                                        () -> showSearchError(
+                                                "iTunes HTTP error: "
+                                                        + response.code()
+                                        )
+                                );
+
+                                return;
+                            }
+
+                            String json =
+                                    response.body() != null
+                                            ? response.body().string()
+                                            : "";
+
+                            List<ITunesResult> results =
+                                    parseITunesResults(json);
+
+                            SwingUtilities.invokeLater(
+                                    () -> showITunesResults(
+                                            results
+                                    )
+                            );
+                        }
+
+                    } catch (Exception e) {
+
+                        SwingUtilities.invokeLater(
+                                () -> showSearchError(
+                                        "Search error: "
+                                                + e.getMessage()
+                                )
                         );
                     }
 
-                    @Override
-                    protected void done() {
+                });
 
-                        try {
-
-                            List<TrackInfo> results =
-                                    get();
-
-                            showResults(
-                                    results
-                            );
-
-                            statusLabel.setText(
-                                    "Found "
-                                            + results.size()
-                                            + " iTunes results"
-                            );
-
-                        } catch (Exception ex) {
-
-                            showError(ex);
-                        }
-                    }
-                };
-
-        worker.execute();
+        thread.setDaemon(true);
+        thread.start();
     }
 
-    // ============================================================
-    // SEARCH TEXT
-    // ============================================================
+    private String getSearchText(File file) {
 
-    private String getSearchText(
-            File file) {
+        TagInfo tag =
+                readTags(file);
+
+        String title =
+                tag.title.trim();
+
+        if (!title.isEmpty()) {
+            return title;
+        }
 
         String name =
                 file.getName();
@@ -861,13 +1034,18 @@ public class MusicTagEditor extends JFrame {
                 name.lastIndexOf('.');
 
         if (dot > 0) {
-
             name =
                     name.substring(
                             0,
                             dot
                     );
         }
+
+        // Remove common track numbering:
+        //
+        // 01 - Song
+        // 01. Song
+        // 01 Song
 
         name =
                 name.replaceFirst(
@@ -879,293 +1057,265 @@ public class MusicTagEditor extends JFrame {
     }
 
     // ============================================================
-    // ITUNES API
+    // Parse iTunes
     // ============================================================
 
-    private List<TrackInfo>
-    searchITunesAPI(
-            String searchText)
-            throws IOException {
+    private List<ITunesResult> parseITunesResults(
+            String json
+    ) {
 
-        String encoded =
-                URLEncoder.encode(
-                        searchText,
-                        StandardCharsets.UTF_8
-                );
-
-        String url =
-                "https://itunes.apple.com/search"
-                        + "?term="
-                        + encoded
-                        + "&media=music"
-                        + "&entity=song"
-                        + "&limit=20";
-
-        Request request =
-                new Request.Builder()
-                        .url(url)
-                        .get()
-                        .build();
-
-        try (Response response =
-                     httpClient
-                             .newCall(request)
-                             .execute()) {
-
-            if (!response.isSuccessful()) {
-
-                throw new IOException(
-                        "HTTP "
-                                + response.code()
-                );
-            }
-
-            if (response.body() == null) {
-
-                throw new IOException(
-                        "Empty response"
-                );
-            }
-
-            return parseITunes(
-                    response.body().string()
-            );
-        }
-    }
-
-    // ============================================================
-    // PARSE ITUNES
-    // ============================================================
-
-    private List<TrackInfo>
-    parseITunes(String json) {
-
-        List<TrackInfo> results =
+        List<ITunesResult> list =
                 new ArrayList<>();
 
         JsonObject root =
-                gson.fromJson(
-                        json,
-                        JsonObject.class
-                );
+                JsonParser.parseString(json)
+                        .getAsJsonObject();
 
-        JsonArray array =
-                root.getAsJsonArray(
-                        "results"
-                );
-
-        if (array == null) {
-            return results;
+        if (!root.has("results")) {
+            return list;
         }
 
-        for (JsonElement element :
-                array) {
+        JsonArray results =
+                root.getAsJsonArray("results");
 
-            JsonObject obj =
-                    element.getAsJsonObject();
+        for (int i = 0;
+             i < results.size();
+             i++) {
 
-            TrackInfo track =
-                    new TrackInfo();
+            JsonObject object =
+                    results.get(i)
+                            .getAsJsonObject();
 
-            track.trackName =
-                    getString(
-                            obj,
+            ITunesResult result =
+                    new ITunesResult();
+
+            result.trackName =
+                    getJsonString(
+                            object,
                             "trackName"
                     );
 
-            track.artistName =
-                    getString(
-                            obj,
+            result.artistName =
+                    getJsonString(
+                            object,
                             "artistName"
                     );
 
-            track.collectionName =
-                    getString(
-                            obj,
+            result.collectionName =
+                    getJsonString(
+                            object,
                             "collectionName"
                     );
 
-            track.genre =
-                    getString(
-                            obj,
+            result.primaryGenreName =
+                    getJsonString(
+                            object,
                             "primaryGenreName"
                     );
 
-            track.releaseDate =
-                    getString(
-                            obj,
+            result.releaseDate =
+                    getJsonString(
+                            object,
                             "releaseDate"
                     );
 
-            track.trackNumber =
-                    getInt(
-                            obj,
+            result.trackNumber =
+                    getJsonInt(
+                            object,
                             "trackNumber"
                     );
 
-            track.discNumber =
-                    getInt(
-                            obj,
+            result.discNumber =
+                    getJsonInt(
+                            object,
                             "discNumber"
                     );
 
-            results.add(track);
+            result.albumArtist =
+                    result.artistName;
+
+            if (!result.trackName.isEmpty()
+                    || !result.artistName.isEmpty()) {
+
+                list.add(result);
+            }
         }
 
-        return results;
+        return list;
+    }
+
+    private String getJsonString(
+            JsonObject object,
+            String key
+    ) {
+
+        if (!object.has(key)
+                || object.get(key).isJsonNull()) {
+
+            return "";
+        }
+
+        return object.get(key)
+                .getAsString();
+    }
+
+    private int getJsonInt(
+            JsonObject object,
+            String key
+    ) {
+
+        if (!object.has(key)
+                || object.get(key).isJsonNull()) {
+
+            return 0;
+        }
+
+        try {
+
+            return object.get(key)
+                    .getAsInt();
+
+        } catch (Exception e) {
+
+            return 0;
+        }
     }
 
     // ============================================================
-    // SHOW RESULTS
+    // Display iTunes results
     // ============================================================
 
-    private void showResults(
-            List<TrackInfo> results) {
+    private void showITunesResults(
+            List<ITunesResult> results
+    ) {
 
-        resultPanel.removeAll();
+        resultsPanel.removeAll();
 
-        for (TrackInfo track :
-                results) {
+        if (results.isEmpty()) {
 
-            JPanel panel =
-                    createResultPanel(
-                            track
+            JTextPane empty =
+                    createMultiLanguageTextPane(
+                            "No iTunes results found."
                     );
 
-            resultPanel.add(panel);
+            resultsPanel.add(empty);
 
-            resultPanel.add(
-                    Box.createVerticalStrut(8)
-            );
+        } else {
+
+            for (ITunesResult result : results) {
+
+                resultsPanel.add(
+                        createResultPanel(result)
+                );
+
+                resultsPanel.add(
+                        Box.createVerticalStrut(8)
+                );
+            }
         }
 
-        resultPanel.revalidate();
-        resultPanel.repaint();
-
-        /*
-         * Reapply Khmer font to newly
-         * created iTunes components.
-         */
-        applyFontToComponents(
-                resultPanel
-        );
+        resultsPanel.revalidate();
+        resultsPanel.repaint();
     }
 
-    // ============================================================
-    // RESULT PANEL
-    // ============================================================
-
     private JPanel createResultPanel(
-            TrackInfo track) {
+            ITunesResult result
+    ) {
 
         JPanel panel =
                 new JPanel(
-                        new BorderLayout(
-                                10,
-                                5
-                        )
+                        new BorderLayout(10, 5)
                 );
 
-        panel.setMaximumSize(
-                new Dimension(
-                        Integer.MAX_VALUE,
-                        110
+        panel.setBorder(
+                BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(
+                                Color.LIGHT_GRAY
+                        ),
+                        new EmptyBorder(
+                                8,
+                                8,
+                                8,
+                                8
+                        )
                 )
         );
 
-        panel.setBorder(
-                BorderFactory
-                        .createCompoundBorder(
-                                BorderFactory
-                                        .createLineBorder(
-                                                Color.LIGHT_GRAY
-                                        ),
-                                BorderFactory
-                                        .createEmptyBorder(
-                                                8,
-                                                8,
-                                                8,
-                                                8
-                                        )
-                        )
-        );
-
-        JPanel info =
+        JPanel textPanel =
                 new JPanel();
 
-        info.setLayout(
+        textPanel.setLayout(
                 new BoxLayout(
-                        info,
+                        textPanel,
                         BoxLayout.Y_AXIS
                 )
         );
 
-        JLabel title =
-                new JLabel(
-                        "Track: "
-                                + track.trackName
+        String trackText =
+                "Track: "
+                        + result.trackName;
+
+        String artistText =
+                "Artist: "
+                        + result.artistName;
+
+        String albumText =
+                "Album: "
+                        + result.collectionName;
+
+        String genreText =
+                "Genre: "
+                        + result.primaryGenreName;
+
+        String dateText =
+                "Release: "
+                        + result.releaseDate;
+
+        JTextPane track =
+                createMultiLanguageTextPane(
+                        trackText
                 );
 
-        JLabel artist =
-                new JLabel(
-                        "Artist: "
-                                + track.artistName
+        JTextPane artist =
+                createMultiLanguageTextPane(
+                        artistText
                 );
 
-        JLabel album =
-                new JLabel(
-                        "Album: "
-                                + track.collectionName
+        JTextPane album =
+                createMultiLanguageTextPane(
+                        albumText
                 );
 
-        JLabel details =
-                new JLabel(
-                        "Track #"
-                                + track.trackNumber
-                                + "   "
-                                + track.genre
+        JTextPane genre =
+                createMultiLanguageTextPane(
+                        genreText
                 );
 
-        info.add(title);
-        info.add(artist);
-        info.add(album);
-        info.add(details);
-
-        JButton applyButton =
-                new JButton(
-                        "Apply to File"
+        JTextPane date =
+                createMultiLanguageTextPane(
+                        dateText
                 );
 
-        applyButton.addActionListener(
-                e -> {
-
-                    File file =
-                            getSelectedFile();
-
-                    if (file == null) {
-
-                        JOptionPane.showMessageDialog(
-                                this,
-                                "Select a file first."
-                        );
-
-                        return;
-                    }
-
-                    applyTrackToFile(
-                            file,
-                            track
-                    );
-                }
-        );
+        textPanel.add(track);
+        textPanel.add(artist);
+        textPanel.add(album);
+        textPanel.add(genre);
+        textPanel.add(date);
 
         panel.add(
-                info,
+                textPanel,
                 BorderLayout.CENTER
         );
 
+        JButton apply =
+                new JButton("Apply to File");
+
+        apply.addActionListener(
+                e -> applyResultToFile(result)
+        );
+
         panel.add(
-                applyButton,
+                apply,
                 BorderLayout.EAST
         );
 
@@ -1173,315 +1323,297 @@ public class MusicTagEditor extends JFrame {
     }
 
     // ============================================================
-    // APPLY
+    // Apply metadata
     // ============================================================
 
-    private void applyTrackToFile(
-            File file,
-            TrackInfo track) {
+    private void applyResultToFile(
+            ITunesResult result
+    ) {
 
-        int answer =
-                JOptionPane.showConfirmDialog(
-                        this,
+        if (selectedFile == null) {
 
-                        "Apply this metadata?\n\n"
-                                + "File: "
-                                + file.getName()
-                                + "\n\n"
-                                + "Track: "
-                                + track.trackName
-                                + "\n"
-                                + "Artist: "
-                                + track.artistName
-                                + "\n"
-                                + "Album: "
-                                + track.collectionName,
-
-                        "Apply Metadata",
-
-                        JOptionPane.YES_NO_OPTION
-                );
-
-        if (answer !=
-                JOptionPane.YES_OPTION) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Please select a file first."
+            );
 
             return;
         }
 
         try {
 
-            writeTags(
-                    file,
-                    track
+            AudioFile audioFile =
+                    AudioFileIO.read(
+                            selectedFile
+                    );
+
+            Tag tag =
+                    audioFile.getTagOrCreateAndSetDefault();
+
+            setTag(
+                    tag,
+                    FieldKey.TITLE,
+                    result.trackName
             );
 
-            updateTableMetadata(
-                    file,
-                    track
+            setTag(
+                    tag,
+                    FieldKey.ARTIST,
+                    result.artistName
             );
 
-            statusLabel.setText(
-                    "Updated: "
-                            + file.getName()
+            setTag(
+                    tag,
+                    FieldKey.ALBUM_ARTIST,
+                    result.albumArtist
+            );
+
+            setTag(
+                    tag,
+                    FieldKey.ALBUM,
+                    result.collectionName
+            );
+
+            setTag(
+                    tag,
+                    FieldKey.GENRE,
+                    result.primaryGenreName
+            );
+
+            if (result.trackNumber > 0) {
+
+                setTag(
+                        tag,
+                        FieldKey.TRACK,
+                        String.valueOf(
+                                result.trackNumber
+                        )
+                );
+            }
+
+            if (result.discNumber > 0) {
+
+                setTag(
+                        tag,
+                        FieldKey.DISC_NO,
+                        String.valueOf(
+                                result.discNumber
+                        )
+                );
+            }
+
+            if (result.releaseDate != null
+                    && result.releaseDate.length() >= 4) {
+
+                setTag(
+                        tag,
+                        FieldKey.YEAR,
+                        result.releaseDate.substring(
+                                0,
+                                4
+                        )
+                );
+            }
+
+            audioFile.commit();
+
+            updateSelectedTableRow();
+
+            showSelectedFile(
+                    selectedFile
             );
 
             JOptionPane.showMessageDialog(
                     this,
-                    "Metadata applied successfully."
+                    "Tags applied successfully."
             );
 
-        } catch (Exception ex) {
+        } catch (Exception e) {
 
-            showError(ex);
+            e.printStackTrace();
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Cannot write tags:\n"
+                            + e.getMessage(),
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE
+            );
         }
     }
 
+    private void setTag(
+            Tag tag,
+            FieldKey key,
+            String value
+    )
+            throws FieldDataInvalidException {
+
+        if (value == null) {
+            value = "";
+        }
+
+        tag.setField(
+                key,
+                value
+        );
+    }
+
     // ============================================================
-    // UPDATE TABLE
+    // Update table after Apply
     // ============================================================
 
-    private void updateTableMetadata(
-            File file,
-            TrackInfo track) {
+    private void updateSelectedTableRow() {
 
-        for (int i = 0;
-             i < fileTableModel.getRowCount();
-             i++) {
+        int row =
+                fileTable.getSelectedRow();
 
-            File tableFile =
-                    (File)
-                            fileTableModel
-                                    .getValueAt(
-                                            i,
-                                            0
-                                    );
+        if (row < 0
+                || selectedFile == null) {
 
-            if (tableFile.equals(file)) {
+            return;
+        }
 
-                fileTableModel.setValueAt(
-                        track.trackName,
-                        i,
-                        1
+        TagInfo tag =
+                readTags(selectedFile);
+
+        fileTableModel.setValueAt(
+                tag.title,
+                row,
+                1
+        );
+
+        fileTableModel.setValueAt(
+                tag.artist,
+                row,
+                2
+        );
+
+        fileTable.repaint();
+    }
+
+    // ============================================================
+    // Search error
+    // ============================================================
+
+    private void showSearchError(
+            String message
+    ) {
+
+        resultsPanel.removeAll();
+
+        JTextPane error =
+                createMultiLanguageTextPane(
+                        message
                 );
 
-                fileTableModel.setValueAt(
-                        track.artistName,
-                        i,
-                        2
-                );
+        resultsPanel.add(error);
 
-                break;
+        resultsPanel.revalidate();
+        resultsPanel.repaint();
+    }
+
+    // ============================================================
+    // JTable mixed-language renderer
+    // ============================================================
+
+    private static class MultiLanguageTableRenderer
+            extends DefaultTableCellRenderer {
+
+        @Override
+        public Component getTableCellRendererComponent(
+                JTable table,
+                Object value,
+                boolean isSelected,
+                boolean hasFocus,
+                int row,
+                int column
+        ) {
+
+            String text = "";
+
+            if (value != null) {
+
+                if (value instanceof File) {
+
+                    text =
+                            ((File) value)
+                                    .getAbsolutePath();
+
+                } else {
+
+                    text =
+                            value.toString();
+                }
             }
-        }
-    }
 
-    // ============================================================
-    // WRITE TAGS
-    // ============================================================
+            JTextPane pane =
+                    createMultiLanguageTextPane(
+                            text
+                    );
 
-    private void writeTags(
-            File file,
-            TrackInfo track)
-            throws Exception {
+            pane.setOpaque(true);
 
-        AudioFile audioFile =
-                AudioFileIO.read(file);
+            if (isSelected) {
 
-        Tag tag =
-                audioFile
-                        .getTagOrCreateAndSetDefault();
+                pane.setBackground(
+                        table.getSelectionBackground()
+                );
 
-        if (!isEmpty(
-                track.trackName)) {
+                pane.setForeground(
+                        table.getSelectionForeground()
+                );
 
-            tag.setField(
-                    FieldKey.TITLE,
-                    track.trackName
-            );
-        }
+            } else {
 
-        if (!isEmpty(
-                track.artistName)) {
+                pane.setBackground(
+                        table.getBackground()
+                );
 
-            tag.setField(
-                    FieldKey.ARTIST,
-                    track.artistName
-            );
+                pane.setForeground(
+                        table.getForeground()
+                );
+            }
 
-            tag.setField(
-                    FieldKey.ALBUM_ARTIST,
-                    track.artistName
-            );
-        }
-
-        if (!isEmpty(
-                track.collectionName)) {
-
-            tag.setField(
-                    FieldKey.ALBUM,
-                    track.collectionName
-            );
-        }
-
-        if (!isEmpty(
-                track.genre)) {
-
-            tag.setField(
-                    FieldKey.GENRE,
-                    track.genre
-            );
-        }
-
-        if (track.trackNumber > 0) {
-
-            tag.setField(
-                    FieldKey.TRACK,
-                    String.valueOf(
-                            track.trackNumber
+            pane.setBorder(
+                    new EmptyBorder(
+                            4,
+                            6,
+                            4,
+                            6
                     )
             );
+
+            return pane;
         }
-
-        if (track.discNumber > 0) {
-
-            tag.setField(
-                    FieldKey.DISC_NO,
-                    String.valueOf(
-                            track.discNumber
-                    )
-            );
-        }
-
-        if (!isEmpty(
-                track.releaseDate)) {
-
-            String year =
-                    track.releaseDate
-                            .substring(
-                                    0,
-                                    Math.min(
-                                            4,
-                                            track.releaseDate
-                                                    .length()
-                                    )
-                            );
-
-            tag.setField(
-                    FieldKey.YEAR,
-                    year
-            );
-        }
-
-        AudioFileIO.write(
-                audioFile
-        );
     }
 
     // ============================================================
-    // HELPERS
+    // Data classes
     // ============================================================
 
-    private static boolean isEmpty(
-            String value) {
+    private static class TagInfo {
 
-        return value == null
-                || value.isBlank();
-    }
-
-    private String getString(
-            JsonObject obj,
-            String key) {
-
-        if (!obj.has(key)
-                || obj.get(key).isJsonNull()) {
-
-            return "";
-        }
-
-        return obj
-                .get(key)
-                .getAsString();
-    }
-
-    private int getInt(
-            JsonObject obj,
-            String key) {
-
-        if (!obj.has(key)
-                || obj.get(key).isJsonNull()) {
-
-            return 0;
-        }
-
-        return obj
-                .get(key)
-                .getAsInt();
-    }
-
-    // ============================================================
-    // ERROR
-    // ============================================================
-
-    private void showError(
-            Exception ex) {
-
-        ex.printStackTrace();
-
-        JOptionPane.showMessageDialog(
-                this,
-                ex.getMessage(),
-                "Error",
-                JOptionPane.ERROR_MESSAGE
-        );
-    }
-
-    // ============================================================
-    // DATA
-    // ============================================================
-
-    private static class Metadata {
-
-        String track = "";
+        String title = "";
         String artist = "";
+        String album = "";
+        String albumArtist = "";
+        String genre = "";
+        String year = "";
+        String track = "";
+        String disc = "";
     }
 
-    private static class TrackInfo {
+    private static class ITunesResult {
 
         String trackName = "";
         String artistName = "";
         String collectionName = "";
-
-        String genre = "";
+        String albumArtist = "";
+        String primaryGenreName = "";
         String releaseDate = "";
-
-        String artworkUrl = "";
-        String trackUrl = "";
 
         int trackNumber;
         int discNumber;
-    }
-
-    // ============================================================
-    // MAIN
-    // ============================================================
-
-    public static void main(
-            String[] args) {
-
-        SwingUtilities.invokeLater(
-                () -> {
-
-                    /*
-                     * Must happen before creating
-                     * the Swing components.
-                     */
-                    setupKhmerFont();
-
-                    MusicTagEditor editor =
-                            new MusicTagEditor();
-
-                    editor.setVisible(true);
-                }
-        );
     }
 }
