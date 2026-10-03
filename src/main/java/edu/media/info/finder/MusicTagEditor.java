@@ -124,41 +124,22 @@ public class MusicTagEditor extends JFrame {
         FONT_KHMER = findFont(
                 14,
                 "Noto Sans Khmer",
-                "Khmer OS",
-                "Khmer OS System",
-                "Leelawadee UI",
-                "Segoe UI"
+                "Khmer OS"
         );
 
         FONT_KOREAN = findFont(
                 14,
-                "Malgun Gothic",
-                "Noto Sans KR",
-                "Noto Sans CJK KR",
-                "Batang",
-                "Gulim",
-                "Segoe UI"
+                "Noto Sans KR"
         );
 
         FONT_CHINESE = findFont(
                 14,
-                "Microsoft YaHei",
-                "Noto Sans SC",
-                "Noto Sans CJK SC",
-                "SimSun",
-                "SimHei",
-                "Segoe UI"
+                "Noto Sans SC"
         );
 
         FONT_JAPANESE = findFont(
                 14,
-                "Yu Gothic UI",
-                "Yu Gothic",
-                "Meiryo",
-                "Noto Sans JP",
-                "Noto Sans CJK JP",
-                "MS Gothic",
-                "Segoe UI"
+                "Noto Sans JP"
         );
     }
 
